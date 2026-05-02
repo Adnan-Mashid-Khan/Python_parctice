@@ -1,9 +1,0 @@
-info 101 ok
-error 222 bad
-info 899 smooth
-error 000 timeout
-info avv hi
-error uuu by
-info 400 yahoo
-error 500 google
-INFO 300 good
