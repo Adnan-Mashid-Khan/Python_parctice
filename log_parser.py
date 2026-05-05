@@ -4,19 +4,26 @@ import sys
 from datetime import datetime
 
 def get_data(filename):
-    with open(filename, "r") as f:
-        return f.readlines()
+    try:
+        with open(filename, "r") as f:
+            return f.readlines()
+    except FileNotFoundError:
+        print(f"{filename} NOT FOUND")
+        return []
     
 def parse_data(line):
     parts = line.split()
     if len(parts) < 2:
         return None
         
-    log_type = parts[0].lower()
+    try:
+        log_type = parts[0].lower()
+    except IndexError:
+        return None
     
-    if parts[1].isdigit():
+    try:
         log_data = int(parts[1])
-    else:
+    except ValueError:
         return None
         
     log_msg = " ".join(parts[2:])
@@ -38,7 +45,7 @@ def write_report(writer, info, error, limit, elimit, now):
         
 def main():
     if len(sys.argv) < 5:
-        print("USAGE: python <file_name> <text_file.txt> <info_limit> <error_min> <output_type>")
+        print("USAGE: python log_parser.py <text_file.txt> <info_limit> <error_min> <output_type>")
         return
     
     try:
