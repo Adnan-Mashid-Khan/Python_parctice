@@ -57,7 +57,7 @@ def main():
 
     if len(sys.argv) < 2:
         print("Incorrect argument passed")
-        print("eg. python log.py <data.txt> <info_limit> <error_minimum> <print/file/both> <output_file.txt")
+        print("eg. python log.py <data.txt> <info_limit> <error_minimum> <print/file/both> <output_file.txt>")
         return None
     
     filename = sys.argv[1]
@@ -105,6 +105,8 @@ def main():
 
         elif "error" == log_type.lower() and error_minimum < log_imp:
             error.append((log_type, log_imp, log_msg))
+        else:
+            skipped.append(line)
     
     if output in ["print", "both"]:
         data_writer(print, now, info, error, skipped, info_limit, error_minimum)
