@@ -2,6 +2,7 @@
 
 import sys
 from datetime import datetime
+now = datetime.now()
 
 def get_data(filename):
     try:
@@ -10,84 +11,93 @@ def get_data(filename):
     except FileNotFoundError:
         print(f"{filename} NOT FOUND")
         return []
-    
+
+def get_parts(parts, index, cast_type, default):
+    try:
+        return cast_type(parts[index])
+    except (IndexError, ValueError):
+        return default
+
+def get_argv(index, cast_type, default):
+    try:
+        return cast_type(sys.argv[index])
+    except (IndexError, ValueError):
+        return default
+        
 def parse_data(line):
     parts = line.split()
-    if len(parts) < 2:
+    if len(parts) < 3:
         return None
         
-    try:
-        log_type = parts[0].lower()
-    except IndexError:
-        return None
-    
-    try:
-        log_data = int(parts[1])
-    except ValueError:
-        return None
-        
+    log_type = get_parts(parts, 0, str, "").lower()
+    log_data = get_parts(parts, 1, int, 0)
     log_msg = " ".join(parts[2:])
     
     return log_type, log_data, log_msg
 
-def write_report(writer, info, error, limit, elimit, now):
+def process_log(lines, limit, elimit):
+
+    info = []
+    error = []
+    skipped = []
+    
+    for line in lines:
+        result = parse_data(line)
+        if result is None:
+            skipped.append(line)
+            continue
+        log_type, log_data, log_msg = result
+
+        if log_type == "info" and log_data < limit:
+            info.append((log_type, log_data, log_msg))
+        elif log_type == "error" and log_data >= elimit:
+            error.append((log_type, log_data, log_msg))
+        else: skipped.append(line)
+
+    return info, error, skipped
+    
+
+def write_report(writer, info, error, skipped, limit, elimit, now):
     writer(f"---Parsed Logs---\n")
     
     writer(f"Run Time: {now.strftime("%Y-%m-%d %H:%M:%S")}\n")
     
     writer(f"INFO (<{limit}): {len(info)}")
-    for i, msg in info:
-        writer(f"{i} - {msg}\n")
+    for info, i, msg in info:
+        writer(f"{info} - {i} - {msg}")
         
-    writer(f"ERROR (>={elimit}): {len(error)}")
-    for e, msg in error:
-        writer(f"{e} - {msg}\n")
+    writer(f"\nERROR (>={elimit}): {len(error)}")
+    for error, e, msg in error:
+        writer(f"{error} - {e} - {msg}")
+
+    writer(f"\nSkipped lines")
+    for s in skipped:
+        writer(f"{(s).strip()}")
         
 def main():
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 2:
         print("USAGE: python log_parser.py <text_file.txt> <info_limit> <error_min> <output_type>")
+        print("Example: python log_parser.py dtd.txt 1000 100 print/file/both")
         return
+        
+    elif len(sys.argv) < 4:
+        print("values not provided, using default")
     
-    try:
-        limit = int(sys.argv[2])
-    except ValueError:
-        print("Invalid input given, using default value 300")
-        limit = 300
-    try:
-        elimit = int(sys.argv[3])
-    except ValueError:
-        print("Invalid input given, using default value 400")
-        elimit = 400
-
-    output = sys.argv[4].lower()
-    if output not in ["file", "print", "both"]:
-        print("Invalid iput, using default 'file'")
-        output = "file"
+    limit = get_argv(2, int, 1000)
+    elimit = get_argv(3, int, 100)
+    output = get_argv(4, str, "print").lower()
         
     filename = sys.argv[1]
-    data1 = get_data(filename)
+    lines = get_data(filename)
 
-    info = []
-    error = []
-    now = datetime.now()
-
-    for line in data1:
-        result = parse_data(line)
-        if result is None:
-            continue
-        log_type, log_data, log_msg = result
-        
-        if log_type == "info" and log_data < limit:
-            info.append((log_data, log_msg))
-        elif log_type == "error" and log_data >= elimit:
-            error.append((log_data, log_msg))
-
+    info, error, skipped = process_log(lines, limit, elimit)
+    
     if output in ["print", "both"]:
-        write_report(print, info, error, limit, elimit, now)
+        write_report(print, info, error, skipped, limit, elimit, now)
 
     if output in ["file", "both"]:
         with open("log_parsed.txt", "w") as f:
-            write_report(lambda x: f.write(x + "\n"), info, error, limit, elimit, now)
+            write_report(lambda x: f.write(x + "\n"), info, error, skipped, limit, elimit, now)
 
 main()
 
