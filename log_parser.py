@@ -37,6 +37,11 @@ def parse_data(line):
 
 def process_log(lines, limit, elimit):
 
+    comparison = {
+        "info": limit,
+        "error": elimit,
+        }
+
     info = []
     error = []
     skipped = []
@@ -48,9 +53,17 @@ def process_log(lines, limit, elimit):
             continue
         log_type, log_data, log_msg = result
 
+        
+
+        if log_type not in comparison:
+            skipped.append(line)
+            continue
+
+        limit = comparison[log_type]
+            
         if log_type == "info" and log_data < limit:
             info.append((log_type, log_data, log_msg))
-        elif log_type == "error" and log_data >= elimit:
+        elif log_type == "error" and log_data >= limit:
             error.append((log_type, log_data, log_msg))
         else: skipped.append(line)
 
@@ -61,7 +74,7 @@ def write_report(writer, info, error, skipped, limit, elimit, now):
     writer(f"---Parsed Logs---\n")
     
     writer(f"Run Time: {now.strftime("%Y-%m-%d %H:%M:%S")}\n")
-    
+
     writer(f"INFO (<{limit}): {len(info)}")
     for info, i, msg in info:
         writer(f"{info} - {i} - {msg}")
