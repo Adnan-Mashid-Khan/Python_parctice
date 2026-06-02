@@ -37,55 +37,80 @@ def parse_data(line):
 
 def process_log(lines, limit, elimit):
 
-    comparison = {
-        "info": limit,
-        "error": elimit,
-        }
+    rule = {
+        "info": lambda log_data: log_data < limit,
+        "error": lambda log_data: log_data >= elimit,
+        "warning": lambda log_data: log_data < 1000,
+    }
 
-    info = []
-    error = []
-    skipped = []
+    
+    logs={
+        "info": [],
+        "error": [],
+        "warning": [],
+        "skipped": [],
+        "invalid": [],
+    }
+    
     
     for line in lines:
         result = parse_data(line)
-        if result is None:
-            skipped.append(line)
+        lane = line.split()
+        if result is None and len(lane) < 3 :
+            logs["invalid"].append(line)
+            continue
+        elif result is None: 
+            logs["skipped"].append(line)
             continue
         log_type, log_data, log_msg = result
 
-        
-
-        if log_type not in comparison:
-            skipped.append(line)
+        if log_type not in logs:
+            logs["skipped"].append(line)
             continue
 
-        limit = comparison[log_type]
+        
             
-        if log_type == "info" and log_data < limit:
-            info.append((log_type, log_data, log_msg))
-        elif log_type == "error" and log_data >= limit:
-            error.append((log_type, log_data, log_msg))
-        else: skipped.append(line)
+        if rule[log_type](log_data):
+            logs[log_type].append((log_type, log_data, log_msg))
+        else: logs["skipped"].append(line)
 
-    return info, error, skipped
+    return logs
     
 
-def write_report(writer, info, error, skipped, limit, elimit, now):
+def write_report(writer, logs, limit, elimit, now):
+
+    display = {
+        "info": f"<{limit}",
+        "error": f">={elimit}",
+        "warning": "<1000"
+    }
+    
     writer(f"---Parsed Logs---\n")
     
     writer(f"Run Time: {now.strftime("%Y-%m-%d %H:%M:%S")}\n")
 
-    writer(f"INFO (<{limit}): {len(info)}")
-    for info, i, msg in info:
-        writer(f"{info} - {i} - {msg}")
-        
-    writer(f"\nERROR (>={elimit}): {len(error)}")
-    for error, e, msg in error:
-        writer(f"{error} - {e} - {msg}")
+    for log_type, entries in logs.items():
+        if log_type in display:
+            writer(f"\n{log_type} ({display[log_type]}): {len(logs[log_type])}")
+        else:
+            writer(f"\n{log_type}: {len(logs[log_type])}")
+        for entry in entries:
+            
+            if log_type in ["skipped", "invalid"]:
+                writer(entry.strip())
+            else: 
+                a, b, c = entry
+                writer(f"{a} - {b} - {c}")
 
-    writer(f"\nSkipped lines")
-    for s in skipped:
-        writer(f"{(s).strip()}")
+
+def write_output(output, logs, limit, elimit, now):
+    if output in ["print", "both"]:
+        write_report(print, logs, limit, elimit, now)
+        
+    if output in ["file", "both"]:
+        with open("log_parsed.txt", "w") as f:
+            write_report(lambda x: f.write(x + "\n"), logs, limit, elimit, now)
+
         
 def main():
     if len(sys.argv) < 2:
@@ -103,14 +128,9 @@ def main():
     filename = sys.argv[1]
     lines = get_data(filename)
 
-    info, error, skipped = process_log(lines, limit, elimit)
-    
-    if output in ["print", "both"]:
-        write_report(print, info, error, skipped, limit, elimit, now)
+    logs = process_log(lines, limit, elimit)
 
-    if output in ["file", "both"]:
-        with open("log_parsed.txt", "w") as f:
-            write_report(lambda x: f.write(x + "\n"), info, error, skipped, limit, elimit, now)
+    write_output(output, logs, limit, elimit, now)
 
 main()
 
