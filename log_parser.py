@@ -55,8 +55,8 @@ def process_log(lines, limit, elimit):
     
     for line in lines:
         result = parse_data(line)
-        lane = line.split()
-        if result is None and len(lane) < 3 :
+        field = line.split()
+        if result is None and len(field) < 3 :
             logs["invalid"].append(line)
             continue
         elif result is None: 
@@ -69,15 +69,67 @@ def process_log(lines, limit, elimit):
             continue
 
         
-            
         if rule[log_type](log_data):
             logs[log_type].append((log_type, log_data, log_msg))
         else: logs["skipped"].append(line)
 
     return logs
-    
 
-def write_report(writer, logs, limit, elimit, now):
+
+def build_statistics(logs):
+
+    stats = {
+        "summary": {
+            "total_processed": 0,
+            "valid_logs": 0,
+            "skip_or_invalid": 0,
+        },
+        "info": {
+            "largest": None,
+            "smallest": None,
+            "count": 0,
+        },
+        "error": {
+            "largest": None,
+            "smallest": None,
+            "count": 0,
+        },
+        "warning": {
+            "largest": None,
+            "smallest": None,
+            "count": 0,
+        },
+    }
+
+    
+    for log_type, entries in logs.items():
+        stats["summary"]["total_processed"] += len(entries)
+        if log_type in ("skipped", "invalid"):
+            stats["summary"]["skip_or_invalid"] += len(entries)
+        else:
+            stats["summary"]["valid_logs"] += len(entries)
+
+            if log_type not in ("skipped", "invalid"):
+                for type_log, data, msg in entries:
+
+                    if log_type in stats:
+                        stats[log_type]["count"] += 1
+
+                    if stats[log_type]["largest"] is None:
+                        stats[log_type]["largest"] = data
+                    else:
+                        if data > stats[log_type]["largest"]:
+                            stats[log_type]["largest"] = data
+            
+                    if stats[log_type]["smallest"] is None:
+                        stats[log_type]["smallest"] = data
+                    else:
+                        if data < stats[log_type]["smallest"]:
+                            stats[log_type]["smallest"] = data
+
+    return stats
+
+def write_report(writer, lines, logs, stats, limit, elimit, now):
 
     display = {
         "info": f"<{limit}",
@@ -85,31 +137,41 @@ def write_report(writer, logs, limit, elimit, now):
         "warning": "<1000"
     }
     
-    writer(f"---Parsed Logs---\n")
-    
+    writer(f"\n---Parsed Logs---\n")
     writer(f"Run Time: {now.strftime("%Y-%m-%d %H:%M:%S")}\n")
+            
+    writer(f"Total Lines in main file = {len(lines)}")
+    writer(f"Total Processed Lines = {stats["summary"]["total_processed"]}")
+    writer(f"Total Valid Logs = {stats["summary"]["valid_logs"]}")
+    writer(f"Total Skipped/Invalid Logs = {stats["summary"]["skip_or_invalid"]}\n")
+    
+    for log_type, data in stats.items():
+        if log_type == "summary": continue
+        writer(f"{log_type} Count = {data['count']}")
+        writer(f"Smallest {log_type} Value = {data["smallest"]}")
+        writer(f"Largest {log_type} Value = {data["largest"]}\n")
 
     for log_type, entries in logs.items():
+        
         if log_type in display:
             writer(f"\n{log_type} ({display[log_type]}): {len(logs[log_type])}")
         else:
             writer(f"\n{log_type}: {len(logs[log_type])}")
         for entry in entries:
-            
             if log_type in ["skipped", "invalid"]:
                 writer(entry.strip())
             else: 
                 a, b, c = entry
                 writer(f"{a} - {b} - {c}")
+                
 
-
-def write_output(output, logs, limit, elimit, now):
+def write_output(output, lines, logs, stats, limit, elimit, now):
     if output in ["print", "both"]:
-        write_report(print, logs, limit, elimit, now)
+        write_report(print, lines, logs, stats, limit, elimit, now)
         
     if output in ["file", "both"]:
         with open("log_parsed.txt", "w") as f:
-            write_report(lambda x: f.write(x + "\n"), logs, limit, elimit, now)
+            write_report(lambda x: f.write(x + "\n"), logs, stats, limit, elimit, now)
 
         
 def main():
@@ -129,8 +191,9 @@ def main():
     lines = get_data(filename)
 
     logs = process_log(lines, limit, elimit)
+    stats = build_statistics(logs)
 
-    write_output(output, logs, limit, elimit, now)
+    write_output(output, lines, logs, stats, limit, elimit, now)
 
 main()
 
