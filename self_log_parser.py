@@ -1,118 +1,139 @@
 #!/usr/bin/env python
 
 import sys
-from datetime import datetime
 
-def get_data(filename):
+from datetime import datetime
+now = datetime.now()
+now = now.strftime("%Y-%m-%d %H:%M:%S")
+
+def get_data(settings):
     try:
-        with open(filename, "r") as f:
+        with open(settings["filename"], "r") as f:
             return f.readlines()
     except FileNotFoundError:
         print("File Not Found")
         return []
+
+
+def get_argv(index, cast_type, default):
+    try:
+        return cast_type(sys.argv[index])
+    except (ValueError, IndexError):
+        return default
+
+def get_parts(parts, index, cast_type, default):
+    try:
+        return cast_type(parts[index])
+    except (ValueError, IndexError):
+        return default
     
 def parse_data(line):
     parts = line.split()
 
-    try:
-        log_type = parts[0]
-    except (IndexError, ValueError):
-        return None
-        
-    try:
-        log_imp = int(parts[1])
-    except (IndexError, ValueError):
-        return None
-        
-    try:
-        log_msg = " ".join(parts[2: ])
-    except IndexError:
+    log_type = get_parts(parts, 0, str, " ").lower()
+    log_imp = get_parts(parts, 1, int, 0)
+    log_msg = " ".join(parts[2: ])
+    if log_msg == "":
         return None
 
     return log_type, log_imp, log_msg
 
-def data_writer(writer, now, info, error, skipped, info_limit, error_minimum):
 
-    writer(f"\ninfo logs <{info_limit}:{len(info)}")#info output
-    writer(f"{now}\n")
-    for log_type, log_imp, log_msg in info:
-        writer(f"{log_imp} --> {log_msg}")
-        
-    writer(f"\nerror logs >{error_minimum}:{len(error)}")#error output
-    writer(f"{now}\n")
-    for log_type, log_imp, log_msg in error:
-        writer(f"{log_imp} --> {log_msg}")
+def parse_log(settings):
 
-    writer(f"\nskipped logs (all skipped logs):{len(skipped)}")
-    writer(f"{now}\n")
-    for a in skipped:
-        writer(a.strip())
+    logs = {
+        "info": [],
+        "error": [],
+        "skipped": []
+        }
 
-    return
+    rules = {
+        "info": lambda log_imp: settings["info_limit"] > log_imp,
+        "error": lambda log_imp: settings["error_minimum"] <= log_imp,
+    }
+
+    lines = get_data(settings)
+
+    for line in lines:
+        data = parse_data(line)
+        if data is None:
+            logs["skipped"].append(line)
+            continue
+
+        log_type, log_imp, log_msg = data
+
+        if log_type.lower() in rules:
+            if rules[log_type](log_imp):
+                logs[log_type].append((log_type, log_imp, log_msg))
+            else: logs["skipped"].append(line)
+            
+        else:
+            logs["skipped"].append(line)
+
+    return logs
+
+
+def write_output(now, logs, settings):
+
+    if settings["output"] in ["print", "both"]:
+        data_writer(print, now, logs, settings)
+
+    if settings["output"] in ["file", "both"]:
+        with open(out_file, "w") as f:
+            data_writer(lambda x: f.write(x + "\n"),now, logs, settings)
+
+
+def data_writer(writer, now, logs, settings):
+
+    #statistics to be added later
+
+    display = {
+        "info": "info",
+        "error": "error",
+    }
+
+    limis = {
+        "info": (f"<{settings['info_limit']}"),
+        "error": (f"=>{settings['error_minimum']}")
+    }
+
+    writer(f"\n---{now}---\n")
+
+    for log_type, entries in logs.items():
+        if log_type in display:
+            writer(f"\n{display[log_type]} {limis[log_type]}: {len(logs[log_type])}")
+            for log_type, log_imp, log_msg in entries:
+                writer(f"{log_type} --> {log_imp} --> {log_msg}")
+
+        else:
+            writer("\nskipped or invalid logs: ")
+            for a in logs[log_type]:
+                writer(f"{a.strip()}")
+
+    writer("")
+
 
 def main():
-
-    now = datetime.now()
-    now = now.strftime("%Y-%m-%d %H:%M:%S")
 
     if len(sys.argv) < 2:
         print("Incorrect argument passed")
         print("eg. python log.py <data.txt> <info_limit> <error_minimum> <print/file/both> <output_file.txt>")
         return None
-    
-    filename = sys.argv[1]
-
-    try:
-        info_limit = int(sys.argv[2])
-    except IndexError:
-        print("info limit not provided, using default 1000")
-        info_limit = 1000
         
-
-    try:
-        error_minimum = int(sys.argv[3])
-    except IndexError:
-        print("minimum error not provided, using default 100")
-        error_minimum = 100
-
-    try:
-        output = sys.argv[4]
-    except IndexError:
-        print("output type not provided, using default type print")
-        output = "print"
-
-    try:
-        out_file = sys.argv[5]
-    except IndexError:
-        print("output file name not given, using defaut file info_error.txt")
-        out_file = "info_error.txt"
+    if len(sys.argv) < 4:
+        print("not enough values provided, using default")
+        print("eg. python log.py <data.txt> <info_limit> <error_minimum> <print/file/both> <output_file.txt>")
     
-    lines = get_data(filename)
-    info = []
-    error = []
-    skipped = []
+    settings = {
+    "filename": sys.argv[1],
+    "info_limit": get_argv(2, int, 1000),
+    "error_minimum": get_argv(3, int, 100),
+    "output": get_argv(4, str, "print").lower(),
+    "out_file": get_argv(5, str, "info_error.txt").lower()
+    }
     
-    for line in lines:
-        data = parse_data(line)
-        if data is None:
-            skipped.append(line)
-            continue
-            
-        log_type, log_imp, log_msg = data
+    logs = parse_log(settings)
 
-        if "info" == log_type.lower() and  info_limit > log_imp:
-            info.append((log_type, log_imp, log_msg))
-
-        elif "error" == log_type.lower() and error_minimum < log_imp:
-            error.append((log_type, log_imp, log_msg))
-        else:
-            skipped.append(line)
-    
-    if output in ["print", "both"]:
-        data_writer(print, now, info, error, skipped, info_limit, error_minimum)
-
-    if output in ["file", "both"]:
-        with open(out_file, "w") as f:
-            data_writer(lambda x: f.write(x + "\n"), now, info, error, skipped, info_limit, error_minimum)
+    write_output(now, logs, settings)
             
 main()
