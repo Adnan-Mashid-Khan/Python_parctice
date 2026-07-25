@@ -33,7 +33,12 @@ class Log:
 class Parser:
     def __init__(self, filename):
         self.filename = filename
-        self.parsed = []
+        self.parsed = {
+            "info": [],
+            "error": [],
+            "warn": [],
+            "unknown": []
+        }
         self.skipped = []
         self.invalid = []
         self.min_imp = 100
@@ -56,7 +61,11 @@ class Parser:
                 self.invalid.append(log)
 
             elif self.passes_importance(log):
-                self.parsed.append(log)     
+                log_type = (log.log_type).lower()
+                if log_type in self.parsed:
+                    self.parsed[log_type].append(log)
+                else:
+                    self.parsed["unknown"].append(log)
 
             else:
                 self.skipped.append(log)
@@ -64,6 +73,8 @@ class Parser:
     def parse_line(self, line):
         
         parts = line.split()
+        if not parts:
+            return Log("", None, "")
         if len(parts) > 0:
             
 
@@ -98,8 +109,15 @@ class Parser:
 
     def output(self):
         print("parsed logs \n------------")
-        for log in self.parsed:
-            log.display()
+
+        for log_type in self.parsed:
+            print(f"{log_type} logs:")
+            if len(self.parsed[log_type]) == 0:
+                print("No Logs of this type")
+            for log in self.parsed[log_type]:
+                log.display()
+            print("\n----")
+                
         print("\nSkipped Log \n------------")
         for log in self.skipped:
             log.display()
@@ -121,14 +139,3 @@ def main():
     parser.build_logs(lines)
     parser.output()
 main()
-
-
-
-
-
-
-#log1 = Log("error",500, "Disk full")
-
-#if log1.validate() is True:
-    #log1.display()
-#else: print("log not valid")
